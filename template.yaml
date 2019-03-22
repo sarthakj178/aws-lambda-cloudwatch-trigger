@@ -1,0 +1,47 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+   aws-lambda-cloudwatch-trigger 
+
+    Trigger AWS Lambda Function based on patterns matched in CloudWatch Logs
+
+Globals:
+    Function:
+        Timeout: 60
+
+Resources:
+    # Dummy Function just to write logs to CloudWatch
+    CloudWatchLogWriterFunction:
+        Type: AWS::Serverless::Function
+        Properties:
+            CodeUri: .
+            Handler: index.write_log
+            Runtime: nodejs8.10
+    
+    # Function which receives events from CloudWatch when the filter matches and currently does nothing. We can take actions like sending an email, creating an alarm etc.
+    TakeActionOnErrorFunction:
+        Type: AWS::Serverless::Function
+        Properties:
+            CodeUri: .
+            Handler: index.take_action_on_error
+            Runtime: nodejs8.10
+
+    # Subscription Filter to match "ERROR" pattern in CloudWatch logs and notify the above Lambda function
+    ErrorDetectionTrigger:
+      Type: AWS::Logs::SubscriptionFilter
+      Properties: 
+        DestinationArn: 
+          Fn::Sub: ${TakeActionOnErrorFunction.Arn}
+        FilterPattern: "ERROR" # Trigger Lambda if "ERROR" is present in CloudWatch logs
+        LogGroupName: 
+          "Fn::Join": ["", ["/aws/lambda/", !Ref CloudWatchLogWriterFunction]] # Log Group where CloudWatchLogWriterFunction will write the logs
+    
+    # Give permission to CloudWatch to be able to trigger the Lambda function
+    TakeActionOnErrorFunctionPermission:
+      Type: "AWS::Lambda::Permission"
+      Properties:
+        Action: lambda:InvokeFunction
+        FunctionName: !Ref TakeActionOnErrorFunction
+        Principal: logs.amazonaws.com
+
+    
